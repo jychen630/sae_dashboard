@@ -73,7 +73,7 @@ class SaeVisRunner:
 
     @torch.inference_mode()
     def run(
-        self, encoder: SAE, model: HookedTransformer, tokens: Int[Tensor, "batch seq"]
+        self, encoder: SAE, model: HookedTransformer, tokens: Int[Tensor, "batch seq"], edited_mask: Int[Tensor, "batch seq"]
     ) -> SaeVisData:
         # Apply random seed
         self.set_seeds()
@@ -90,8 +90,6 @@ class SaeVisRunner:
         # encoder = encoder.to(DTYPES[self.cfg.dtype])
         # # model = cast(HookedTransformer, model.to(DTYPES[self.cfg.dtype]))
 
-        # Create objects to store all the data we'll get from `_get_feature_data`
-        sae_vis_data = SaeVisData(cfg=self.cfg)
         # model.to(self.cfg.device)
         # encoder = encoder.to(self.cfg.device)
         time_logs = defaultdict(float)
@@ -113,6 +111,14 @@ class SaeVisRunner:
         all_consolidated_dfa_results = {
             feature_idx: {} for feature_idx in self.cfg.features
         }
+
+
+        
+        # Create objects to store all the data we'll get from `_get_feature_data`
+        sae_vis_data = SaeVisData(cfg=self.cfg)
+        sae_vis_data_masked = SaeVisData(cfg=self.cfg)
+
+
         # For each batch of features: get new data and update global data storage objects
         # TODO: We should write out json files with the results as this runs rather than storing everything in memory
         for features in feature_batches:
@@ -127,135 +133,156 @@ class SaeVisRunner:
                 corrcoef_encoder,
                 batch_dfa_results,
             ) = feature_data_generator.get_feature_data(features, progress)
+            # can just apply mask to every feature? at this point
+            # and abstract the below functions -> Yes
+            # TODO: APPLY MASKED
 
-            # Get the logits of all features (i.e. the directions this feature writes to the logit output)
-            logits = einops.einsum(
-                feature_resid_dir.to(device=model.W_U.device, dtype=model.W_U.dtype),
-                model.W_U,
-                "feats d_model, d_model d_vocab -> feats d_vocab",
-            ).to(self.device)
+            all_feat_acts_masked = all_feat_acts * edited_mask.unsqueeze(-1)
 
-            # ! Get stats (including quantiles, which will be useful for the prompt-centric visualisation)
-            feature_stats = FeatureStatistics.create(
-                data=einops.rearrange(all_feat_acts, "b s feats -> feats (b s)"),
-                batch_size=self.cfg.quantile_feature_batch_size,
-            )
+            sums = all_feat_acts_masked.sum(dim=(0, 1))
+            sorted_indices = torch.argsort(sums, descending=True)
 
-            # ! Data setup code (defining the main objects we'll eventually return)
-            feature_data_dict: dict[int, FeatureData] = {
-                feat: FeatureData() for feat in features
-            }
+            all_feat_acts_masked = all_feat_acts_masked[:, :, sorted_indices]
+            all_feat_acts = all_feat_acts[:, :, sorted_indices]
 
-            # We're using `cfg.feature_centric_layout` to figure out what data we'll need to calculate during this function
-            layout = self.cfg.feature_centric_layout
+            print(f"all_feat_acts_masked sum={torch.sum(all_feat_acts_masked)}")
+            print(f"all_feat_acts sum={torch.sum(all_feat_acts)}")
+            ## end of applying mask
+            def populate(sae_vis_data_object, all_feat_acts_data, corrcoef_flag):
+            
+                # Get the logits of all features (i.e. the directions this feature writes to the logit output)
+                logits = einops.einsum(
+                    feature_resid_dir.to(device=model.W_U.device, dtype=model.W_U.dtype),
+                    model.W_U,
+                    "feats d_model, d_model d_vocab -> feats d_vocab",
+                ).to(self.device)
 
-            feature_tables_data = get_features_table_data(
-                feature_out_dir=feature_out_dir,
-                corrcoef_neurons=corrcoef_neurons,
-                corrcoef_encoder=corrcoef_encoder,
-                n_rows=layout.feature_tables_cfg.n_rows,  # type: ignore
-            )
-
-            # Add all this data to the list of FeatureTablesData objects
-            if batch_dfa_results:
-                # Accumulate DFA results across feature batches
-                for feature_idx, feature_data in batch_dfa_results.items():
-                    all_consolidated_dfa_results[feature_idx].update(feature_data)
-
-            for i, (feat, logit_vector) in enumerate(zip(features, logits)):
-                feature_data_dict[feat].feature_tables_data = FeatureTablesData(
-                    **{k: v[i] for k, v in feature_tables_data.items()}  # type: ignore
+                # ! Get stats (including quantiles, which will be useful for the prompt-centric visualisation)
+                feature_stats = FeatureStatistics.create(
+                    data=einops.rearrange(all_feat_acts_data, "b s feats -> feats (b s)"),
+                    batch_size=self.cfg.quantile_feature_batch_size,
                 )
 
-                # Get logits histogram data (no title)
-                feature_data_dict[feat].logits_histogram_data = (
-                    LogitsHistogramData.from_data(
-                        data=logit_vector.to(
-                            torch.float32
-                        ),  # need this otherwise fails on MPS
-                        n_bins=layout.logits_hist_cfg.n_bins,  # type: ignore
-                        tickmode="5 ticks",
-                        title=None,
-                    )
+                # ! Data setup code (defining the main objects we'll eventually return)
+                feature_data_dict: dict[int, FeatureData] = {
+                    feat: FeatureData() for feat in features
+                }
+
+                # We're using `cfg.feature_centric_layout` to figure out what data we'll need to calculate during this function
+                layout = self.cfg.feature_centric_layout
+
+                feature_tables_data = get_features_table_data(
+                    feature_out_dir=feature_out_dir,
+                    corrcoef_neurons=corrcoef_neurons if corrcoef_flag else None,
+                    corrcoef_encoder=corrcoef_encoder if corrcoef_flag else None,
+                    n_rows=layout.feature_tables_cfg.n_rows,  # type: ignore
                 )
 
-                # Get data for feature activations histogram (including the title!)
-                feat_acts = all_feat_acts[..., i]
+                # Add all this data to the list of FeatureTablesData objects
+                if batch_dfa_results:
+                    # Accumulate DFA results across feature batches
+                    for feature_idx, feature_data in batch_dfa_results.items():
+                        all_consolidated_dfa_results[feature_idx].update(feature_data)
 
-                # Create a mask for tokens to ignore based on both ID and position
-                ignore_tokens_mask = torch.ones_like(tokens, dtype=torch.bool)
-                if self.cfg.ignore_tokens:
-                    ignore_tokens_mask &= ~torch.isin(
-                        tokens,
-                        torch.tensor(
-                            list(self.cfg.ignore_tokens),
-                            dtype=tokens.dtype,
-                            device=tokens.device,
-                        ),
+                for i, (feat, logit_vector) in enumerate(zip(features, logits)):
+                    # __ for each feature __
+
+                    feature_data_dict[feat].feature_tables_data = FeatureTablesData(
+                        **{k: v[i] for k, v in feature_tables_data.items()}  # type: ignore
                     )
-                if self.cfg.ignore_positions:
-                    ignore_positions_mask = torch.ones_like(tokens, dtype=torch.bool)
-                    ignore_positions_mask[:, self.cfg.ignore_positions] = False
-                    ignore_tokens_mask &= ignore_positions_mask
 
-                # Move the mask to the same device as feat_acts
-                ignore_tokens_mask = ignore_tokens_mask.to(feat_acts.device)
-
-                # set any masked positions to 0
-                masked_feat_acts = feat_acts * ignore_tokens_mask
-
-                # Apply the mask to feat_acts
-                nonzero_feat_acts = masked_feat_acts[masked_feat_acts > 0]
-                frac_nonzero = nonzero_feat_acts.numel() / masked_feat_acts.numel()
-
-                feature_data_dict[feat].acts_histogram_data = (
-                    ActsHistogramData.from_data(
-                        data=nonzero_feat_acts.to(
-                            torch.float32
-                        ),  # need this otherwise fails on MPS
-                        n_bins=layout.act_hist_cfg.n_bins,  # type: ignore
-                        tickmode="5 ticks",
-                        title=f"ACTIVATIONS<br>DENSITY = {frac_nonzero:.3%}",
+                    # Get logits histogram data (no title)
+                    feature_data_dict[feat].logits_histogram_data = (
+                        LogitsHistogramData.from_data(
+                            data=logit_vector.to(
+                                torch.float32
+                            ),  # need this otherwise fails on MPS
+                            n_bins=layout.logits_hist_cfg.n_bins,  # type: ignore
+                            tickmode="5 ticks",
+                            title=None,
+                        )
                     )
+
+                    # Get data for feature activations histogram (including the title!)
+                    feat_acts = all_feat_acts_data[..., i]
+
+                    # Create a mask for tokens to ignore based on both ID and position
+                    ignore_tokens_mask = torch.ones_like(tokens, dtype=torch.bool)
+                    if self.cfg.ignore_tokens:
+                        ignore_tokens_mask &= ~torch.isin(
+                            tokens,
+                            torch.tensor(
+                                list(self.cfg.ignore_tokens),
+                                dtype=tokens.dtype,
+                                device=tokens.device,
+                            ),
+                        )
+                    if self.cfg.ignore_positions:
+                        ignore_positions_mask = torch.ones_like(tokens, dtype=torch.bool)
+                        ignore_positions_mask[:, self.cfg.ignore_positions] = False
+                        ignore_tokens_mask &= ignore_positions_mask
+
+                    # Move the mask to the same device as feat_acts
+                    ignore_tokens_mask = ignore_tokens_mask.to(feat_acts.device)
+
+                    # set any masked positions to 0
+                    masked_feat_acts = feat_acts * ignore_tokens_mask
+
+                    # Apply the mask to feat_acts
+                    nonzero_feat_acts = masked_feat_acts[masked_feat_acts > 0]
+                    frac_nonzero = nonzero_feat_acts.numel() / masked_feat_acts.numel()
+
+                    feature_data_dict[feat].acts_histogram_data = (
+                        ActsHistogramData.from_data(
+                            data=nonzero_feat_acts.to(
+                                torch.float32
+                            ),  # need this otherwise fails on MPS
+                            n_bins=layout.act_hist_cfg.n_bins,  # type: ignore
+                            tickmode="5 ticks",
+                            title=f"ACTIVATIONS<br>DENSITY = {frac_nonzero:.3%}",
+                        )
+                    )
+
+                    # Create a MiddlePlotsData object from this, and add it to the dict
+                    feature_data_dict[feat].logits_table_data = get_logits_table_data(
+                        logit_vector=logit_vector,
+                        n_rows=layout.logits_table_cfg.n_rows,  # type: ignore
+                    )
+
+                    # ! Calculate all data for the right-hand visualisations, i.e. the sequences
+
+                    # Add this feature's sequence data to the list
+                    feature_data_dict[feat].sequence_data = (
+                        sequence_data_generator.get_sequences_data(
+                            feat_acts=masked_feat_acts,
+                            feat_logits=logits[i],
+                            resid_post=torch.tensor([]),  # no longer used
+                            feature_resid_dir=feature_resid_dir[i],
+                        )
+                    )
+                    if self.cfg.use_dfa:
+                        feature_data_dict[feat].dfa_data = all_consolidated_dfa_results.get(
+                            feat, None
+                        )
+                        feature_data_dict[feat].decoder_weights_data = (
+                            get_decoder_weights_distribution(encoder, model, feat)[0]
+                        )
+
+                    # Update the 2nd progress bar (fwd passes & getting sequence data dominates the runtime of these computations)
+                    if progress is not None:
+                        progress[1].update(1)
+
+                # ! Return the output, as a dict of FeatureData items
+                new_feature_data = SaeVisData(
+                    cfg=self.cfg,
+                    feature_data_dict=feature_data_dict,
+                    feature_stats=feature_stats,
                 )
 
-                # Create a MiddlePlotsData object from this, and add it to the dict
-                feature_data_dict[feat].logits_table_data = get_logits_table_data(
-                    logit_vector=logit_vector,
-                    n_rows=layout.logits_table_cfg.n_rows,  # type: ignore
-                )
+                sae_vis_data_object.update(new_feature_data)
 
-                # ! Calculate all data for the right-hand visualisations, i.e. the sequences
-
-                # Add this feature's sequence data to the list
-                feature_data_dict[feat].sequence_data = (
-                    sequence_data_generator.get_sequences_data(
-                        feat_acts=masked_feat_acts,
-                        feat_logits=logits[i],
-                        resid_post=torch.tensor([]),  # no longer used
-                        feature_resid_dir=feature_resid_dir[i],
-                    )
-                )
-                if self.cfg.use_dfa:
-                    feature_data_dict[feat].dfa_data = all_consolidated_dfa_results.get(
-                        feat, None
-                    )
-                    feature_data_dict[feat].decoder_weights_data = (
-                        get_decoder_weights_distribution(encoder, model, feat)[0]
-                    )
-
-                # Update the 2nd progress bar (fwd passes & getting sequence data dominates the runtime of these computations)
-                if progress is not None:
-                    progress[1].update(1)
-
-            # ! Return the output, as a dict of FeatureData items
-            new_feature_data = SaeVisData(
-                cfg=self.cfg,
-                feature_data_dict=feature_data_dict,
-                feature_stats=feature_stats,
-            )
-
-            sae_vis_data.update(new_feature_data)
+            populate(sae_vis_data_object=sae_vis_data, all_feat_acts_data=all_feat_acts, corrcoef_flag=True)
+            populate(sae_vis_data_object=sae_vis_data_masked, all_feat_acts_data=all_feat_acts_masked, corrcoef_flag=True)
 
         # Now exited, make sure the progress bar is at 100%
         if progress is not None:
@@ -274,7 +301,10 @@ class SaeVisRunner:
         sae_vis_data.model = model
         sae_vis_data.encoder = encoder
 
-        return sae_vis_data
+        sae_vis_data_masked.cfg = self.cfg
+        sae_vis_data_masked.model = model
+        sae_vis_data_masked.encoder = encoder
+        return sae_vis_data, sae_vis_data_masked
 
     def set_seeds(self) -> None:
         if self.cfg.seed is not None:

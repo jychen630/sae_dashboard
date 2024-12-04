@@ -144,7 +144,7 @@ class FeatureDataGenerator:
                 progress[0].update(1)
 
         all_feat_acts = torch.cat(all_feat_acts, dim=0)
-
+        print("all_feat_acts.shape", all_feat_acts.shape)
         return (
             all_feat_acts,
             torch.tensor([]),  # all_resid_post, no longer used
