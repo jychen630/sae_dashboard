@@ -60,7 +60,7 @@ Object.entries(DATA.logitsTableData).forEach(([suffix, tablesData]) => {
     
     logitsTableId = `logits-table-${suffix}`;
     logitTablesMetaData.forEach(tableMetaData => {
-        setupLogitTables(logitsTableId, tablesData, tableMetaData);
+        // setupLogitTables(logitsTableId, tablesData, tableMetaData);
     });
 
     var t1 = performance.now();

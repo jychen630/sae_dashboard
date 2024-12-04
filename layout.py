@@ -184,8 +184,10 @@ class SaeVisLayoutConfig:
         return cls(
             columns=[
                 Column(FeatureTablesConfig()),
+                Column(ActsHistogramConfig()),
                 Column(
-                    ActsHistogramConfig(), LogitsTableConfig(), LogitsHistogramConfig()
+                    LogitsTableConfig(), LogitsHistogramConfig(),
+                    hidden=True,
                 ),
                 Column(SequencesConfig(stack_mode="stack-none")),
             ],

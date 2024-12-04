@@ -84,7 +84,7 @@ Object.entries(DATA.logitsHistogramData).forEach(([suffix, histData]) => {
     var t0 = performance.now();
 
     histId = `histogram-logits-${suffix}`;
-    setupLogitsHistogram(histId, histData);
+    // setupLogitsHistogram(histId, histData);
 
     var t1 = performance.now();
     console.log(`HTML for ${histId} generated in ${(t1 - t0).toFixed(1)} ms`);

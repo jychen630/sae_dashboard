@@ -241,6 +241,8 @@ function defineData() {{
                 raise TypeError(
                     f"Expected col_idx to be int or tuple, but got {col_idx}"
                 )
+            if column.hidden:
+                continue
             html_str += "\n\n" + grid_column(
                 html_str_column, column=column, height=layout_height, id=column_id
             )

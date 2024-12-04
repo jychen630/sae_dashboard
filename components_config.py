@@ -192,9 +192,11 @@ class Column:
         self,
         *args: GenericComponentConfig,
         width: int | None = None,
+        hidden: bool = False,
     ):
         self.components = list(args)
         self.width = width
+        self.hidden = hidden
 
     def __iter__(self) -> Iterator[Any]:
         return iter(self.components)
