@@ -243,6 +243,16 @@ class SaeVisRunner:
                     nonzero_feat_acts = masked_feat_acts[masked_feat_acts > 0]
                     frac_nonzero = nonzero_feat_acts.numel() / masked_feat_acts.numel()
 
+                    # filter out fraction
+                    #print(f"frac_nonzero={frac_nonzero}, density={frac_nonzero*100}%")
+                    if frac_nonzero < 1e-3: # less than 0.1%
+                        #print("Too small frac. Skipping...")
+                        del feature_data_dict[feat]
+                        continue
+                    feature_data_dict[feat].frac_nonzero = frac_nonzero
+                    ##### moving density calculation upfront.
+                    ##### determine whether to continue computation by looking at the density *first*
+
                     feature_data_dict[feat].acts_histogram_data = (
                         ActsHistogramData.from_data(
                             data=nonzero_feat_acts.to(
