@@ -27,8 +27,18 @@ if (Object.keys(DASHBOARD_DATA).length === 1) {
 } else {
 
     // Assuming `DASHBOARD_DATA` is available and d3 has been included
-    const parsedKeys = Object.keys(DASHBOARD_DATA).map(key => key.split("|"));
-
+    // const parsedKeys = Object.keys(DASHBOARD_DATA).map(key => key.split("|"));
+    const orderedKeys = DASHBOARD_KEYS_ORDER || Object.keys(DASHBOARD_DATA);
+    console.log(`my order=${DASHBOARD_KEYS_ORDER}`)
+    // Map and log keys in the desired order
+    const parsedKeys = [];
+    orderedKeys.forEach(key => {
+        console.log(`Processing key in custom order: ${key}`);
+        if (DASHBOARD_DATA.hasOwnProperty(key)) {
+            parsedKeys.push(key.split("|"));
+        }
+    });
+    
     // Determine `n` - the number of dropdowns needed
     const n = parsedKeys[0].length;
 
@@ -39,7 +49,9 @@ if (Object.keys(DASHBOARD_DATA).length === 1) {
     parsedKeys.forEach(parts => {
         parts.forEach((part, index) => options[index].add(part));
     });
-
+    // parsedKeys.forEach((keyParts, index) => {
+    //     console.log(`Key ${index}:`, keyParts);
+    // });
     // Select the container for the dropdowns
     const container = d3.select('#dropdown-container');
 
