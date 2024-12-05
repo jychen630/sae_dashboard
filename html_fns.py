@@ -144,6 +144,10 @@ class HTML:
                 will be dumped into the first line of those files
         """
         html_str = ""
+        # js_data.keys()=dict_keys(['AGGDATA', 'DASHBOARD_DATA'])
+        # js_data['DASHBOARD_DATA'].keys()=dict_keys(['448', '0', '449', '256', '320', '257', '1', '2', '192', '321', '64'])
+        # print(f"js_data.keys()={self.js_data.keys()}")
+        # print(f"js_data['DASHBOARD_DATA'].keys()={self.js_data['DASHBOARD_DATA'].keys()}")
 
         # Check arguments
         if isinstance(filename, str):
@@ -154,7 +158,7 @@ class HTML:
         assert (
             filename.parent.exists()
         ), f"Expected {filename.parent.resolve()!r} to exist"
-        assert self.js_data.keys() == {"AGGDATA", "DASHBOARD_DATA"}
+        assert self.js_data.keys() == {"AGGDATA", "DASHBOARD_DATA", "DASHBOARD_KEYS_ORDER"}
 
         # ! JavaScript
 
@@ -169,28 +173,31 @@ class HTML:
         # its keys are just JS filenames with the `Script.js` suffix removed. Lastly, note that we put the histograms
         # scripts first, because hovering over tokens might require a relayout on a histogram, so it needs to exist!
         js_data_filenames = next(iter(self.js_data["DASHBOARD_DATA"].values())).keys()
+        # js_data_filenames=dict_keys(['featureTablesData', 'actsHistogramData', 'tokenData'])
         js_data_filenames = [
             name.replace("Data", "Script.js") for name in js_data_filenames
         ]
+        # after some replacement js_data_filenames=['featureTablesScript.js', 'actsHistogramScript.js', 'tokenScript.js']
         js_data_filenames = sorted(
             js_data_filenames, key=lambda x: "histograms" not in x.lower()
         )
+        # after sorting js_data_filenames=['actsHistogramScript.js', 'featureTablesScript.js', 'tokenScript.js']
         js_create_vis = "\n".join(
             [(js_path / js_name).read_text() for js_name in js_data_filenames]
         )
 
         # Read in the code which will dynamically create dropdowns from the DATA keys
         js_create_dropdowns = (js_path / "_setupPageScript.js").read_text()
-
+        #print(f"js_create_dropdowns={js_create_dropdowns}")
         # Put everything together, in the correct order (including defining DATA & creating dropdowns from it, which
         # is done in DOMContentLoaded). Note, double curly braces are used to escape single curly braces in f-strings.
         js_str = f"""
 document.addEventListener("DOMContentLoaded", function(event) {{
     const ALL_DATA = defineData();
-    setupPage(ALL_DATA['DASHBOARD_DATA'], ALL_DATA['AGGDATA']);
+    setupPage(ALL_DATA['DASHBOARD_DATA'], ALL_DATA['AGGDATA'], ALL_DATA['DASHBOARD_KEYS_ORDER']);
 }});
 
-function setupPage(DASHBOARD_DATA, AGGDATA) {{
+function setupPage(DASHBOARD_DATA, AGGDATA, DASHBOARD_KEYS_ORDER) {{
     // Dynamically creates dropdowns from the data (by parsing its keys), and causes `createVis` to be called whenever
     // the dropdowns change. This includes the initial call to `createVis` with the first key, which is START_KEY.
 

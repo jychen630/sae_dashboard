@@ -34,11 +34,11 @@ def save_feature_centric_vis(
         separate_files: If True, saves each feature to a separate HTML file.
     """
     # Set the default argument for the dropdown (i.e. when the page first loads)
-    first_feature = (
-        next(iter(sae_vis_data.feature_data_dict))
-        if (feature_idx is None)
-        else feature_idx
-    )
+    # first_feature = (
+    #     next(iter(sae_vis_data.feature_data_dict))
+    #     if (feature_idx is None)
+    #     else feature_idx
+    # )
 
     # Get tokenize function (we only need to define it once)
     assert sae_vis_data.model is not None
@@ -49,12 +49,24 @@ def save_feature_centric_vis(
     if include_only is not None:
         iterator = [(i, sae_vis_data.feature_data_dict[i]) for i in include_only]
     else:
-        iterator = list(sae_vis_data.feature_data_dict.items())
+        # Sort data by frac_nonzero
+        # print(f"[before sorted] len={len(sae_vis_data.feature_data_dict.items())} sae_vis_data.feature_data_dict.items(): {sae_vis_data.feature_data_dict.items()}")
+        iterator = sorted(
+            list(sae_vis_data.feature_data_dict.items()), 
+            key=lambda item: item[1].frac_nonzero,
+            reverse=True
+            )  
+        # print(f"after sorted, len={len(iterator)} iterator= {iterator}")
     if sae_vis_data.cfg.verbose:
         iterator = tqdm(iterator, desc="Saving feature-centric vis")
+    first_feature = (
+        iterator[0][0]
+        if (feature_idx is None)
+        else feature_idx
+    )
 
     HTML_OBJ = HTML()  # Initialize HTML object for combined file
-
+    
     # For each FeatureData object, we get the html_obj for its feature-centric vis
     for feature, feature_data in iterator:
         html_obj = feature_data._get_html_data_feature_centric(
@@ -91,10 +103,13 @@ def save_feature_centric_vis(
                 HTML_OBJ.html_data = deepcopy(html_obj.html_data)
 
     if not separate_files:
+        ordered_keys = list(HTML_OBJ.js_data.keys())
+        #print(f"ordered_keys={ordered_keys}")
         # Add the aggdata
         HTML_OBJ.js_data = {
             "AGGDATA": sae_vis_data.feature_stats.aggdata,
             "DASHBOARD_DATA": HTML_OBJ.js_data,
+            "DASHBOARD_KEYS_ORDER": ordered_keys
         }
 
         # Save our full HTML
