@@ -67,9 +67,9 @@ class PromptConfig(BaseComponentConfig):
 class SequencesConfig(BaseComponentConfig):
     buffer: tuple[int, int] | None = (5, 5)
     compute_buffer: bool = True
-    n_quantiles: int = 10
+    n_quantiles: int = 0
     top_acts_group_size: int = 20
-    quantile_group_size: int = 5
+    quantile_group_size: int = 0
     top_logits_hoverdata: int = 5
     stack_mode: Literal["stack-all", "stack-quantiles", "stack-none"] = "stack-all"
     hover_below: bool = True
