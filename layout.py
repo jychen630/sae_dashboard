@@ -185,10 +185,10 @@ class SaeVisLayoutConfig:
             columns=[
                 Column(FeatureTablesConfig()),
                 Column(ActsHistogramConfig()),
-                Column(
-                    LogitsTableConfig(), LogitsHistogramConfig(),
-                    hidden=True,
-                ),
+                # Column(
+                #     LogitsTableConfig(), LogitsHistogramConfig(),
+                #     hidden=True,
+                # ),
                 Column(SequencesConfig(stack_mode="stack-none")),
             ],
             height=750,

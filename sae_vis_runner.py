@@ -121,7 +121,7 @@ class SaeVisRunner:
 
         # For each batch of features: get new data and update global data storage objects
         # TODO: We should write out json files with the results as this runs rather than storing everything in memory
-        for features in feature_batches:
+        for feature_batch_idx, features in tqdm(enumerate(feature_batches), desc="Processing feature batches"):
             # model and sae activations calculations.
 
             (
@@ -197,24 +197,6 @@ class SaeVisRunner:
 
                 for i, (feat, logit_vector) in enumerate(zip(features, logits)):
                     # __ for each feature __
-
-                    feature_data_dict[feat].feature_tables_data = FeatureTablesData(
-                        **{k: v[i] for k, v in feature_tables_data.items()}  # type: ignore
-                    )
-
-                    # Get logits histogram data (no title)
-                    feature_data_dict[feat].logits_histogram_data = (
-                        LogitsHistogramData.from_data(
-                            data=logit_vector.to(
-                                torch.float32
-                            ),  # need this otherwise fails on MPS
-                            n_bins=layout.logits_hist_cfg.n_bins,  # type: ignore
-                            tickmode="5 ticks",
-                            title=None,
-                        )
-                    )
-
-                    # Get data for feature activations histogram (including the title!)
                     feat_acts = all_feat_acts_data[..., i]
 
                     # Create a mask for tokens to ignore based on both ID and position
@@ -253,6 +235,24 @@ class SaeVisRunner:
                     ##### moving density calculation upfront.
                     ##### determine whether to continue computation by looking at the density *first*
 
+                    feature_data_dict[feat].feature_tables_data = FeatureTablesData(
+                        **{k: v[i] for k, v in feature_tables_data.items()}  # type: ignore
+                    )
+
+                    # Get logits histogram data (no title)
+                    # feature_data_dict[feat].logits_histogram_data = (
+                    #     LogitsHistogramData.from_data(
+                    #         data=logit_vector.to(
+                    #             torch.float32
+                    #         ),  # need this otherwise fails on MPS
+                    #         n_bins=layout.logits_hist_cfg.n_bins,  # type: ignore
+                    #         tickmode="5 ticks",
+                    #         title=None,
+                    #     )
+                    # )
+
+                    # Get data for feature activations histogram (including the title!)
+                    
                     feature_data_dict[feat].acts_histogram_data = (
                         ActsHistogramData.from_data(
                             data=nonzero_feat_acts.to(
@@ -264,11 +264,11 @@ class SaeVisRunner:
                         )
                     )
 
-                    # Create a MiddlePlotsData object from this, and add it to the dict
-                    feature_data_dict[feat].logits_table_data = get_logits_table_data(
-                        logit_vector=logit_vector,
-                        n_rows=layout.logits_table_cfg.n_rows,  # type: ignore
-                    )
+                    # # Create a MiddlePlotsData object from this, and add it to the dict
+                    # feature_data_dict[feat].logits_table_data = get_logits_table_data(
+                    #     logit_vector=logit_vector,
+                    #     n_rows=layout.logits_table_cfg.n_rows,  # type: ignore
+                    # )
 
                     # ! Calculate all data for the right-hand visualisations, i.e. the sequences
 
