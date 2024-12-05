@@ -135,19 +135,30 @@ class SaeVisRunner:
             ) = feature_data_generator.get_feature_data(features, progress)
             # can just apply mask to every feature? at this point
             # and abstract the below functions -> Yes
-            # TODO: APPLY MASKED
 
+            # APPLY MASKED
             all_feat_acts_masked = all_feat_acts * edited_mask.unsqueeze(-1)
 
+            # sort indices by sums, large to small
             sums = all_feat_acts_masked.sum(dim=(0, 1))
             sorted_indices = torch.argsort(sums, descending=True)
 
             all_feat_acts_masked = all_feat_acts_masked[:, :, sorted_indices]
             all_feat_acts = all_feat_acts[:, :, sorted_indices]
 
-            print(f"all_feat_acts_masked sum={torch.sum(all_feat_acts_masked)}")
-            print(f"all_feat_acts sum={torch.sum(all_feat_acts)}")
+            # filter out matrices with a sum of 0
+            # todo, if work, can combine steps
+            non_zero_indices = sums[sorted_indices] != 0  # Boolean mask for non-zero sums
+            all_feat_acts_masked = all_feat_acts_masked[:, :, non_zero_indices]
+            all_feat_acts = all_feat_acts[:, :, non_zero_indices]
+            features = [feat for feat, is_non_zero in zip(features, non_zero_indices) if is_non_zero]
+            #print(f"[{feature_batch_idx}] feature_length/sum(acts masked)/sum(acts)={len(features)}/{torch.sum(all_feat_acts_masked).item():.2f}/{torch.sum(all_feat_acts).item():.2f}")
             ## end of applying mask
+            if torch.sum(all_feat_acts_masked).item() < 0.01: 
+                #print(f"[{feature_batch_idx}] Skipped")
+                #features = []
+                continue
+
             def populate(sae_vis_data_object, all_feat_acts_data, corrcoef_flag):
             
                 # Get the logits of all features (i.e. the directions this feature writes to the logit output)
